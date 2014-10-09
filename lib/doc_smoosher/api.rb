@@ -1,6 +1,7 @@
 module DocSmoosher
   class Api < ApiObject
-    attr_accessor :endpoint, :version, :format, :resources, :resquests, :objects
+
+    attr_accessor :endpoint, :version, :format
 
     def resources
       @resources ||= []
@@ -10,18 +11,30 @@ module DocSmoosher
       @objects ||= []
     end
 
-    def resquests
-      @resquests ||= []
+    def requests
+      @requests ||= []
+    end
+
+    def bare_calls
+      @bare_calls ||= []
     end
 
     def request( params = {}, &block )
-
+      r = Request.new( params, &block )
+      requests << r unless requests.include?(r)
+      r
     end
 
     def resource( params = {}, &block )
       r = Resource.new( params, &block )
       resources << r unless resources.include?(r)
       r
+    end
+
+    def bare_call( params = {}, &block )
+      r = BareCall.new( params, &block )
+      bare_calls << r unless bare_calls.include?(r)
+      r 
     end
 
 
@@ -36,10 +49,10 @@ module DocSmoosher
       o
     end
 
+
     def initialize(params = {}, &block)
       super(params)
     end
-
 
     def as_json(options={})
       {
