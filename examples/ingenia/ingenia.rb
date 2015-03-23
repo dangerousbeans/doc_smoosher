@@ -33,6 +33,23 @@ full_text = define_parameter( name: 'full_text' ) do |p|
   p.default = false
 end
 
+metadata = define_parameter(name: 'metadata') do |m|
+  m.description = <<-DESC
+  A list of attributes you can associate to the knowledge item.
+
+  Valid types of metadata are date, string, collection and number.
+  'date': which includes a time for when an event occurred
+  'string': General purpose content
+  'collection': One item from defined collection
+  'number': A numerical value
+
+  DESC
+
+  m.type = :array
+  m.example = "[{ name: 'published_date', type: 'date', content: '2012-01-20 00:00:00' }, { name: 'title', type: 'string', content: 'A day to remember',  { name: 'author', type: 'collection', content: 'Joe Bloggs' },      { name: 'author', type: 'collection', content: 'John Smith' }]"
+end
+
+
 ##
 # Introduction
 #
@@ -251,7 +268,7 @@ EOF
     p.example = '{ "topics": [ "startups", "saas", "marketing" ], "geography": [ "united kingdom" ] }'
   end
 
-  item.example = '
+  item.example = <<-EXAMPLE
   {
     text: "High tech startups and their positive power to change for good",
     tag_sets: {
@@ -260,7 +277,9 @@ EOF
       "Geography": [ ]
     }
   }
-  '
+  EXAMPLE
+
+  item.parameter metadata
 
   item.footnote =<<-FN
     <p>[1] You can input content as one of these fields: text, a URL, a file. Formats
@@ -322,7 +341,7 @@ json_item_show = define_object( name: 'Item: show output' ) do |item|
   end
 
   item.parameter name: 'score' do |p|
-    p.description = 'A number which quantifies the strength of the association between an item and a tag, between 0 (lowest) and 1 (highest)'
+    p.description = 'An aggregation of the machine and rule scores, between 0 (lowest) and 1 (highest).'
     p.type = :numeric
   end
 
@@ -336,7 +355,22 @@ json_item_show = define_object( name: 'Item: show output' ) do |item|
     p.type = :float
   end
 
-  item.example = '
+  item.parameter name: 'machine_score' do |p|
+    p.description = 'A number which quantifies the strength of the association between an item and a tag, between 0 (lowest) and 1 (highest)'
+    p.type = :numeric
+  end
+
+  item.parameter name: 'rule_score' do |p|
+    p.description = 'A number which quantifies the strength of the association between an item and a tag score, between -1 (lowest) and 1 (highest)'
+    p.type = :numeric
+  end
+
+  item.parameter name: 'membership_degree' do |p|
+    p.description = 'the degree to which this item is a member of its bundle'
+    p.type = :float
+  end
+
+item.example = '
   {
     "id":"e19e134d0e79153349ff78a674283e0b",
     "last_classified_at":2013-12-16T11:25:07+00:00,
@@ -352,20 +386,29 @@ json_item_show = define_object( name: 'Item: show output' ) do |item|
                 {
                   "id":4352,
                   "name":"startups",
+                  "user_selected": "f",
                   "score":"0.8",
-                  "user_selected": "f"
+                  "machine_score":"0.45",
+                  "rule_score": "0.35",
+                  "user_assigned_score": null
                 },
                 {
-                  "id":7811,
-                  "name":"saas",
-                  "score":"0.45",
+                  "id": 7811,
+                  "name": "saas",
                   "user_selected": "t",
-                  "user_assigned_score" : 0.7
+                  "score": "0.45",
+                  "machine_score":"0.45",
+                  "rule_score": null,
+                  "user_assigned_score": 0.7
                 },
                 {
                   "id":1327,
                   "name":"marketing",
-                  "user_selected": "t"
+                  "user_selected": "t",
+                  "score": "0.50",
+                  "machine_score":"0.45",
+                  "rule_score": "0.05",
+                  "user_assigned_score": 0.7
                 }
               ]
           }
@@ -688,31 +731,42 @@ define_api( name: 'Ingenia API', description: DESCRIPTION ) do |api|
   api.resource name: 'Recommendation engine' do |r|
     r.description = ""
 
-    r.request name: 'Similar to' do |req|
-      req.description = ''
-      req.call_type = :get
-      req.path = '/items/:id/similar_to'
-
-      req.parameter name: 'id' do |p|
-        p.description = 'ID of item for which we want other similar items'
-        p.type = :string
-        p.required = true
-      end
-
-      req.parameter limit
-
-      req.parameter full_text
-
-      req.parameter name: 'mode' do |p|
-        p.description = 'Constrain matches to base similarity on just "tags", just "words", or "auto" (first tags, then words)'
-        p.type = :string
-        p.example = 'mode=tags'
-        p.default = 'auto'
-      end
-
-
-      req.response = json_similarity_response
-    end
+    # r.request name: 'Similar to' do |req|
+    #   req.description = ''
+    #   req.call_type = :get
+    #   req.path = '/items/:id/similar_to'
+    #
+    #   req.parameter name: 'id' do |p|
+    #     p.description = 'ID of item for which we want other similar items'
+    #     p.type = :string
+    #     p.required = true
+    #   end
+    #
+    #   req.parameter limit
+    #
+    #   req.parameter full_text
+    #
+    #   req.parameter name: 'mode' do |p|
+    #     p.description = 'Constrain matches to base similarity on just "tag", just "word", or "auto" (first tags, then words)'
+    #     p.type = :string
+    #     p.example = 'mode=tag'
+    #     p.default = 'auto'
+    #   end
+    #
+    #   req.parameter name: 'metadata_filters' do |p|
+    #     p.description = 'Instruct ingenia to only consider knowledge items which match these criteria'
+    #     p.type = :string
+    #     p.example = 'metadata_filters[author]=Joe%20Bloggs'
+    #   end
+    #
+    #   req.parameter name: 'item_filters' do |p|
+    #     p.description = 'Instruct ingenia to only consider knowledge items which were created within specific dates. Dates are inclusive.'
+    #     p.type = :string
+    #     p.example = 'item_filters[from]=2014-12-25&item_filters[to]=2014-12-30'
+    #   end
+    #
+    #   req.response = json_similarity_response
+    # end
 
     r.request name: 'Similar to text' do |req|
       req.description = ''
@@ -724,15 +778,39 @@ define_api( name: 'Ingenia API', description: DESCRIPTION ) do |api|
         p.type = :string
       end
 
+      req.parameter name: 'bundle_id' do |p|
+        p.description = 'The bundle this item would most likely be found in. If this parameter is omitted, ingenia assumes the first bundle you created.'
+        p.type = :integer
+        p.example = '77'
+      end
+
+      req.parameter name: 'bundle_ids' do |p|
+        p.description = 'Find similar items in one or more bundles. If this parameter is omitted, ingenia find items from any of your bundles.'
+        p.type = :array
+        p.example = '1,4,77'
+      end
+
       req.parameter limit
 
       req.parameter full_text
 
       req.parameter name: 'mode' do |p|
-        p.description = 'Constrain matches to base similarity on just "tags", just "words", or "auto" (first tags, then words)'
+        p.description = 'Constrain matches to base similarity on just "tag", just "word", or "auto" (first tags, then words)'
         p.type = :string
-        p.example = 'mode=tags'
+        p.example = 'mode=tag'
         p.default = 'auto'
+      end
+
+      req.parameter name: 'metadata_filters' do |p|
+        p.description = 'Instruct ingenia to only consider knowledge items which match these criteria'
+        p.type = :string
+        p.example = 'metadata_filters[author]=Joe%20Bloggs'
+      end
+
+      req.parameter name: 'item_filters' do |p|
+        p.description = 'Instruct ingenia to only consider knowledge items which were created within specific dates. Dates are inclusive.'
+        p.type = :string
+        p.example = 'item_filters[from]=2014-12-25&item_filters[to]=2014-12-30'
       end
 
       req.response = json_similarity_response
@@ -750,9 +828,27 @@ define_api( name: 'Ingenia API', description: DESCRIPTION ) do |api|
         p.example = '[ 45, 787, 23 ]'
       end
 
+      req.parameter name: 'bundle_ids' do |p|
+        p.description = 'Find similar items in one or more bundles. If this parameter is omitted, ingenia will attempt to infer the bundles from the tags'
+        p.type = :array
+        p.example = '1,4,77'
+      end
+
       req.parameter limit
 
       req.parameter full_text
+
+      req.parameter name: 'metadata_filters' do |p|
+        p.description = 'Instruct ingenia to only consider knowledge items which match these criteria'
+        p.type = :string
+        p.example = 'metadata_filters[author]=Joe%20Bloggs'
+      end
+
+      req.parameter name: 'item_filters' do |p|
+        p.description = 'Instruct ingenia to only consider knowledge items which were created within specific dates. Dates are inclusive.'
+        p.type = :string
+        p.example = 'item_filters[from]=2014-12-25&item_filters[to]=2014-12-30'
+      end
 
       req.response = json_similarity_response
     end
@@ -767,12 +863,17 @@ define_api( name: 'Ingenia API', description: DESCRIPTION ) do |api|
     r.description = ""
 
     r.request name: 'Summarise' do |req|
-      req.description = ''
-      req.call_type = :post
+      req.description = '<code class="get_post">GET</code> is also supported'
+      req.call_type =  :post
       req.path = '/summarise'
 
       req.parameter name: 'text' do |p|
         p.description = 'Text to summarise: the key sentences will be extracted'
+        p.type = :string
+      end
+
+      req.parameter name: 'id' do |p|
+        p.description = 'ID of the item to be summarised.'
         p.type = :string
       end
 
@@ -873,35 +974,35 @@ define_api( name: 'Ingenia API', description: DESCRIPTION ) do |api|
 # Simply post item's text
 curl -X POST \\
   -F'json={ "text" : "Some inline text" }' \\
-  http://api.ingeniapi.com/v2/items=$api_key&classify=true
+  'http://api.ingeniapi.com/v2/items?api_key=$api_key&classify=true'
 
 # Create an item with some text and assign a tag ('foo') to it with a score of 0.2.
 curl -X POST \\
   -F'json={ "text" : "Some inline text" , "tags" : { "foo" : 0.2 } }' \\
-  http://api.ingeniapi.com/v2/items=$api_key&classify=true
+  'http://api.ingeniapi.com/v2/items?api_key=$api_key&classify=true'
 
 # Create an item with some text, create a new tag set ('my tag set') and add
 # a tag ('foo') with a score of 0.2 to that tag set..
 curl -X POST \\
   -F'json={ "text" : "Some inline text" , "tag_sets" : { "my tag set" :  { "foo" : 0.2 } } }' \\
-  http://api.ingeniapi.com/v2/items=$api_key&classify=true
+  'http://api.ingeniapi.com/v2/items?api_key=$api_key&classify=true'
 
 # Create an item with the tag ('foo')
 curl -X POST \\
   -F'json={ "text" : "Some inline text" , "tags" : [ "foo"]  }' \\
-  http://api.ingeniapi.com/v2/items=$api_key&classify=true
+  'http://api.ingeniapi.com/v2/items=$api_key&classify=true'
 
 # Post url to retrieve content from and create an item with that content
 curl -X POST \\
   -F'json={ "url" : "http://www.zdziarski.com/blog/?p=3875" }' \\
-  http://api.ingeniapi.com/v2/items=$api_key
+  'http://api.ingeniapi.com/v2/items?api_key=$api_key'
 
 # Post a file using multipart/form-data upload and create an item with that content
 curl -X POST \\
   -F'json={}' \\
-  -F'file=@article.txt \\
-  http://api.ingeniapi.com/v2/items=$api_key&update_existing=true
-      EOF
+  -F'file=@article.txt' \\
+  'http://api.ingeniapi.com/v2/items?api_key=$api_key&classify=true&update_existing=true'
+EOF
 
 
     end
@@ -958,15 +1059,39 @@ curl -X POST \\
         p.required = true
       end
 
+      req.parameter name: 'bundle_id' do |p|
+        p.description = 'Tell ingenia which bundle this item is in. If this parameter is omitted, ingenia will only look for the item in the default bundle'
+        p.type = :integer
+        p.example = '77'
+      end
+
+      req.parameter name: 'bundle_ids' do |p|
+        p.description = 'Restrict your search to one or more bundles. If this parameter is omitted, all bundles will be scanned'
+        p.type = :array
+        p.example = '1,4,77'
+      end
+
       req.parameter limit
 
       req.parameter full_text
 
       req.parameter name: 'mode' do |p|
-        p.description = 'Constrain matches to base similarity on just "tags", just "words", or "auto" (first tags, then words)'
+        p.description = 'Constrain matches to base similarity on just "tag", just "word", or "auto" (first tags, then words)'
         p.type = :string
-        p.example = 'mode=tags'
+        p.example = 'mode=tag'
         p.default = 'auto'
+      end
+
+      req.parameter name: 'metadata_filters' do |p|
+        p.description = 'Instruct ingenia to only consider knowledge items which match these criteria'
+        p.type = :string
+        p.example = 'metadata_filters[author]=Joe%20Bloggs'
+      end
+
+      req.parameter name: 'item_filters' do |p|
+        p.description = 'Instruct ingenia to only consider knowledge items which were created within specific dates. Dates are inclusive.'
+        p.type = :string
+        p.example = 'item_filters[from]=2014-12-25&item_filters[to]=2014-12-30'
       end
 
       req.response = json_similarity_response
